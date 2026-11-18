@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>茶嶼手搖飲 — SQL 資料庫查詢互動練習網</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+      background-color: #f8fafc;
+      color: #1e293b;
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    /* ERD 卡片與欄位樣式 (仿照參考圖設計) */
+    .erd-card {
+      position: absolute;
+      width: 205px;
+      background: #ffffff;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 6px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      transition: all 0.2s ease;
+      z-index: 10;
+    }
+    .erd-card.active-table {
+      border-color: #10b981;
+      background: #ecfdf5;
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.12);
+    }
+    .erd-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 13px;
+    }
+    .erd-card.active-table .erd-card-header {
+      border-bottom-color: #a7f3d0;
+    }
+    .erd-table-name {
+      font-weight: 700;
+      color: #334155;
+      letter-spacing: 0.02em;
+    }
+    .erd-card.active-table .erd-table-name {
+      color: #065f46;
+    }
+    .erd-row-count {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    .erd-col-list {
+      padding: 6px 0;
+    }
+    .erd-col {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 26px;
+      padding: 0 12px;
+      font-size: 12.5px;
+      color: #475569;
+    }
+    .erd-col.is-pk .col-name {
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .erd-col.active-col {
+      background-color: rgba(16, 185, 129, 0.14);
+      color: #065f46;
+      font-weight: 600;
+    }
+    .col-badge {
+      font-size: 10px;
+      color: #94a3b8;
+      letter-spacing: 0.03em;
+    }
+    .erd-col.active-col .col-badge {
+      color: #059669;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body class="leading-relaxed">
+
+  <!-- 頂部簡潔標題列 -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto px-6 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <div class="text-sm md:text-base text-slate-700">
+        <strong class="text-slate-900 font-bold">TEA_SHOP：茶嶼手搖飲門市與會員訂單管理。</strong>門市需要掌握誰在哪間分店購買了哪款飲品、甜度偏好與各分類營收貢獻。
+      </div>
+      <div class="flex items-center gap-4 text-sm font-medium shrink-0">
+        <a href="#case-section" class="text-teal-700 hover:text-teal-900 transition">案例背景 →</a>
+        <a href="#practice-section" class="text-teal-700 hover:text-teal-900 transition">查詢操作 →</a>
+        <a href="#compare-section" class="text-teal-700 hover:text-teal-900 transition">結果比較 →</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-6 py-6 space-y-8">
+
+    <!-- 資料與關聯 (包含 背景 / ERD / 資料表 切換，預設顯示 ERD) -->
+    <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+      <!-- 卡片頂部工具列 -->
+      <div class="px-6 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <h2 class="font-bold text-slate-800 text-base">資料與關聯</h2>
+          <span class="text-slate-300">|</span>
+          <span class="mono text-xs text-slate-400 tracking-wider">TEA_SHOP</span>
+        </div>
+
+        <!-- 右上角切換按鈕組 -->
+        <div class="inline-flex bg-slate-100 p-1 rounded-lg text-xs font-medium text-slate-600">
+          <button onclick="switchTopTab('bg')" id="btn-tab-bg" class="px-3 py-1.5 rounded-md transition flex items-center gap-1.5 hover:text-slate-900">
+            <span>📄</span> 背景
+          </button>
+          <button onclick="switchTopTab('erd')" id="btn-tab-erd" class="px-3 py-1.5 rounded-md transition flex items-center gap-1.5 bg-white text-teal-700 shadow-sm font-semibold">
+            <span>🌿</span> ERD
+          </button>
+          <button onclick="switchTopTab('tables')" id="btn-tab-tables" class="px-3 py-1.5 rounded-md transition flex items-center gap-1.5 hover:text-slate-900">
+            <span>⊞</span> 資料表
+          </button>
+        </div>
+      </div>
+
+      <!-- 面板 1：ERD 視圖 (完全仿照截圖之卡片與 FK->PK 直角箭頭) -->
+      <div id="panel-erd" class="block">
+        <div class="overflow-x-auto py-6 px-4 bg-white">
+          <div id="erd-canvas" class="relative mx-auto" style="width: 980px; height: 470px;">
+            
+            <!-- 底層 SVG 負責繪製直角關聯線與欄位名稱標籤 -->
+            <svg id="erd-svg" class="absolute inset-0 w-full h-full pointer-events-none" style="z-index: 5;">
+              <defs>
+                <!-- 一般灰色箭頭 -->
+                <marker id="arrow-normal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#94a3b8" />
+                </marker>
+                <!-- 本輪查詢高亮綠色箭頭 -->
+                <marker id="arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#059669" />
+                </marker>
+              </defs>
+            </svg>
+
+            <!-- 資料表 1：STORES (門市表) -->
+            <div class="erd-card" id="table-card-stores" data-table="stores" style="left: 25px; top: 30px;">
+              <div class="erd-card-header">
+                <span class="erd-table-name mono">STORES</span>
+                <span class="erd-row-count">3列</span>
+              </div>
+              <div class="erd-col-list mono">
+                <div class="erd-col is-pk" id="col-stores-store_id" data-col="store_id">
+                  <span class="col-name">store_id</span>
+                  <span class="col-badge">PK</span>
+                </div>
+                <div class="erd-col" id="col-stores-store_name" data-col="store_name">
+                  <span class="col-name">store_name</span>
+                  <span class="col-badge"></span>
+                </div>
+                <div class="erd-col" id="col-stores-district" data-col="district">
+                  <span class="col-name">district</span>
+                  <span class="col-badge"></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 資料表 2：MEMBERS (會員表) -->
+            <div class="erd-card" id="table-card-members" data-table="members" style="left: 25px; top: 230px;">
+              <div class="erd-card-header">
+                <span class="erd-table-name mono">MEMBERS</span>
+                <span class="erd-row-count">4列</span>
+              </div>
+              <div class="erd-col-list mono">
+                <div class="erd-col is-pk" id="col-members-member_id" data-col="member_id">
+                  <span class="col-name">member_id</span>
+                  <span class="col-badge">PK</span>
+                </div>
+                <div class="erd-col" id="col-members-name" data-col="name">
+                  <span class="col-name">name</span>
+                  <span class="col-badge"></span>
+                </div>
+                <div class="erd-col" id="col-members-vip_level" data-col="vip_level">
+                  <span class="col-name">vip_level</span>
+                  <span class="col-badge"></span>
+                </div>
+                <div class="erd-col" id="col-members-join_date" data-col="join_date">
+                  <span class="col-name">join_date</span>
+                  <span class="col-badge"></span>
+                </div>
+                <div class="erd-col" id="col-members-referrer_id" data-col="referrer_id">
+                  <span class="col-name">referrer_id</span>
+                  <span class="col-badge">FK</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 資料表 3：ORDERS (訂單核心表 - 置中) -->
+            <div class="erd-card" id="table-card-orders" data-table="orders" style="left: 365px; top: 55px;">
+              <div class="erd-card-header">
+                <span class="erd-table-name mono">ORDERS</span>
+                <span class="erd-row-count">7列</span>
+              </div>
+              <div class="erd-col-list mono">
+                <div class="erd-col is-pk" id="col-orders-order_id" data-col="order_id">
+                  <span class="col-name">order_id</span>
+                  <span class="col-badge">PK</span>
+                </div>
+                <div class="erd-col" id="col-orders-store_id" data-col="store_id">
+                  <span class="col-name">store_id</span>
+                  <span class="col-badge">FK</span>
+                </div>
+                <div class="erd-col" id="col-orders-member_id" data-col="member_id">
+                  <span class="col-name">member_id</span>
+                  <span class="col-badge">FK</span>
+                </div>
+                <div class="erd-col" id="col-orders-drink_id" data-col="drink_id">
+                  <span class="col-name">drink_id</span>
+                  <span class="col-badge">FK</span>
+                </div>
+                <div class="erd-col" id="col-orders-sugar_level" data-col="sugar_level">
+                  <span class="col-name">sugar_level</span>
+                  <span class="col-badge"></span>
+                </div>
+                <div class="erd-col" id="col-orders-quantity" data-col="quantity">
+                  <span class="col-name">quantity</span>
+                  <span class="col-badge"></span>
+                </div>
+                <div class="erd-col" id="col-orders-order_date" data-col="order_date">
+                  <span class="col-name">order_date</span>
+                  <span class="col-badge"></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 資料表 4：DRINKS (飲品菜單表 - 右上) -->
+            <div class="erd-card" id="table-card-drinks" data-table="drinks" style="left: 720px; top: 35px;">
+              <div class="erd-card-header">
+                <span class="erd-table-name mono">DRINKS</span>
+                <span class="erd-row-count">6列</span>
+              </div>
+              <div class="erd-col-list mono">
+                <div class="erd-col is-pk" id="col-drinks-drink_id" data-col="drink_id">
+                  <span class="col-name">drink_id</span>
+                  <span class="col-badge">PK</span>
+                </div>
+                <div class="erd-col" id="col-drinks-drink_name" data-col="drink_name">
+                  <span class="col-name">drink_name</span>
+                  <span class="col-badge"></span>
+                </div>
+                <div class="erd-col" id="col-drinks-category" data-col="category">
+                  <span class="col-name">category</span>
+                  <span class="col-badge"></span>
+                </div>
+                <div class="erd-col" id="col-drinks-price" data-col="price">
+                  <span class="col-name">price</span>
+                  <span class="col-badge"></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 資料表 5：ORDER_TOPPINGS (訂單加料明細表 - 右下，含複合主鍵 PK · FK) -->
+            <div class="erd-card" id="table-card-order_toppings" data-table="order_toppings" style="left: 720px; top: 265px;">
+              <div class="erd-card-header">
+                <span class="erd-table-name mono">ORDER_TOPPINGS</span>
+                <span class="erd-row-count">5列</span>
+              </div>
+              <div class="erd-col-list mono">
+                <div class="erd-col is-pk" id="col-order_toppings-order_id" data-col="order_id">
+                  <span class="col-name">order_id</span>
+                  <span class="col-badge">PK · FK</span>
+                </div>
+                <div class="erd-col is-pk" id="col-order_toppings-topping_name" data-col="topping_name">
+                  <span class="col-name">topping_name</span>
+                  <span class="col-badge">PK</span>
+                </div>
+                <div class="erd-col" id="col-order_toppings-extra_price" data-col="extra_price">
+                  <span class="col-name">extra_price</span>
+                  <span class="col-badge"></span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ERD 底部圖例列 (完全對應參考截圖底部) -->
+        <div class="px-6 py-3 bg-slate-50/70 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-500 gap-2">
+          <div class="flex flex-wrap items-center gap-4">
+            <span><strong class="mono text-slate-700">PK</strong> 主鍵</span>
+            <span><strong class="mono text-slate-700">FK</strong> 外來鍵</span>
+            <span>箭頭：外來鍵 → 被參照的鍵</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <span class="text-slate-600 font-medium">本輪查詢使用欄位（隨下方執行 SQL 自動切換高亮）</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 面板 2：背景視圖 (切換至「背景」時顯示) -->
+      <div id="panel-bg" class="hidden p-6 bg-slate-50/50">
+        <div class="grid md:grid-cols-2 gap-6">
+          <div class="bg-white p-5 rounded-lg border border-slate-200">
+            <h3 class="font-bold text-slate-800 mb-2">🎯 資料庫給誰使用？</h3>
+            <p class="text-sm text-slate-600">提供給「茶嶼手搖飲」連鎖門市的<strong>店長、區域督導與行銷企劃人員</strong>使用，用來追蹤各分店（STORES）、會員（MEMBERS）、飲品（DRINKS）、訂單（ORDERS）與加料明細（ORDER_TOPPINGS）。</p>
+          </div>
+          <div class="bg-white p-5 rounded-lg border border-slate-200">
+            <h3 class="font-bold text-slate-800 mb-2">💡 要解決什麼問題？</h3>
+            <p class="text-sm text-slate-600">解決傳統 POS 匯出單一表格造成的資料冗餘，支援分析「哪些飲品最常被點購」、「會員與非會員路過客的營收佔比」以及「老會員推薦新會員（自我參照外鍵 referrer_id）」等營運問題。</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 面板 3：資料表樣本與欄位說明 (切換至「資料表」時顯示) -->
+      <div id="panel-tables" class="hidden p-6 space-y-6">
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div>
+            <h4 class="mono font-bold text-xs text-slate-500 uppercase mb-2">STORES (門市表)</h4>
+            <div id="preview-stores" class="border rounded-lg overflow-x-auto"></div>
+          </div>
+          <div>
+            <h4 class="mono font-bold text-xs text-slate-500 uppercase mb-2">MEMBERS (會員表)</h4>
+            <div id="preview-members" class="border rounded-lg overflow-x-auto"></div>
+          </div>
+          <div>
+            <h4 class="mono font-bold text-xs text-slate-500 uppercase mb-2">DRINKS (飲品表)</h4>
+            <div id="preview-drinks" class="border rounded-lg overflow-x-auto"></div>
+          </div>
+          <div class="md:col-span-2">
+            <h4 class="mono font-bold text-xs text-slate-500 uppercase mb-2">ORDERS (訂單表)</h4>
+            <div id="preview-orders" class="border rounded-lg overflow-x-auto"></div>
+          </div>
+          <div>
+            <h4 class="mono font-bold text-xs text-slate-500 uppercase mb-2">ORDER_TOPPINGS (加料明細表)</h4>
+            <div id="preview-toppings" class="border rounded-lg overflow-x-auto"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 1. 案例背景與欄位說明 (常駐區塊，確保助教評分一目了然) -->
+    <section id="case-section" class="grid md:grid-cols-2 gap-6">
+      <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <span class="text-xs font-bold text-teal-700 bg-teal-50 px-2.5 py-1 rounded">1. 案例背景</span>
+        <h3 class="text-lg font-bold text-slate-900 mt-2 mb-3">資料庫給誰使用？要解決什麼問題？</h3>
+        <ul class="space-y-2.5 text-sm text-slate-600 list-disc list-inside">
+          <li><strong>使用對象：</strong>手搖飲連鎖品牌之<strong>門市店長</strong>（掌握熱銷飲品與備料）與<strong>總部行銷人員</strong>（分析會員等級消費力與推薦人脈）。</li>
+          <li><strong>解決問題：</strong>消除過往 Excel 重複記錄飲品單價與會員資料造成的更新異常；透過正規化拆分為 5 張關聯表，並允許訂單的 <code class="mono bg-slate-100 px-1 rounded">member_id</code> 為 <code class="mono bg-slate-100 px-1 rounded">NULL</code> 以真實記錄「非會員現場客」的消費。</li>
+        </ul>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        <span class="text-xs font-bold text-teal-700 bg-teal-50 px-2.5 py-1 rounded">2. 資料庫設計亮點</span>
+        <h3 class="text-lg font-bold text-slate-900 mt-2 mb-3">ERD 關聯與主外鍵設計說明</h3>
+        <ul class="space-y-2 text-sm text-slate-600 list-disc list-inside">
+          <li><strong class="mono text-slate-800">ORDERS</strong>：包含三個外來鍵 <code class="mono">store_id</code>、<code class="mono">member_id</code>、<code class="mono">drink_id</code>，分別參照門市、會員與飲品主鍵。</li>
+          <li><strong class="mono text-slate-800">MEMBERS.referrer_id</strong>：<strong>自我參照外來鍵（Self-Referencing FK）</strong>，指向同表 <code class="mono">member_id</code>，記錄是由哪位舊會員介紹入會。</li>
+          <li><strong class="mono text-slate-800">ORDER_TOPPINGS</strong>：使用 <code class="mono">(order_id, topping_name)</code> 作為<strong>複合主鍵（PK · FK）</strong>，記錄單筆訂單加購的多種配料。</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 3. 查詢操作區塊 -->
+    <section id="practice-section" class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-5">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+        <div>
+          <span class="text-xs font-bold text-teal-700 bg-teal-50 px-2.5 py-1 rounded">3. 查詢操作</span>
+          <h2 class="text-xl font-bold text-slate-900 mt-1">互動 SQL 查詢練習（支援即時修改與錯誤偵測）</h2>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="loadQuestion(0)" id="q-tab-0" class="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-teal-700 text-white transition">題目 1：單表篩選與排序</button>
+          <button onclick="loadQuestion(1)" id="q-tab-1" class="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">題目 2：跨表 JOIN 查詢</button>
+          <button onclick="loadQuestion(2)" id="q-tab-2" class="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">題目 3：GROUP BY 營收統計</button>
+        </div>
+      </div>
+
+      <!-- 題目敘述 -->
+      <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+        <div id="q-title" class="font-bold text-slate-900 text-base"></div>
+        <div id="q-desc" class="text-sm text-slate-600 mt-1"></div>
+      </div>
+
+      <!-- SQL 編輯器 -->
+      <div class="space-y-2.5">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <label for="sql-editor" class="text-xs font-bold text-slate-600 uppercase tracking-wider">SQL 編輯器（修改後點擊執行，上方 ERD 會同步高亮使用的表格與欄位）</label>
+          <div class="flex gap-2">
+            <button onclick="applyModifiedSQL()" class="text-xs bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 px-3 py-1 rounded font-semibold transition">
+              ⚡ 套用「結果比較」修改版 SQL
+            </button>
+            <button onclick="resetSQL()" class="text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 px-3 py-1 rounded font-semibold transition">
+              ↺ 還原預設 SQL
+            </button>
+          </div>
+        </div>
+        <textarea id="sql-editor" rows="5" class="mono w-full bg-slate-900 text-emerald-300 p-4 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm leading-relaxed"></textarea>
+        <div class="flex items-center gap-3">
+          <button onclick="runUserSQL()" class="bg-teal-700 hover:bg-teal-800 text-white font-bold text-sm px-5 py-2 rounded-lg shadow-sm transition">
+            ▶ 執行 SQL
+          </button>
+          <span id="exec-status" class="text-xs font-semibold"></span>
+        </div>
+      </div>
+
+      <!-- 預期結果 vs 實際結果 -->
+      <div class="grid md:grid-cols-2 gap-6 pt-2">
+        <div class="border border-slate-200 rounded-lg p-4 bg-slate-50/40">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="font-bold text-sm text-slate-700">🎯 預期結果（題目預設解答）</h4>
+            <span class="text-xs text-slate-400">參考基準</span>
+          </div>
+          <div id="expected-result" class="overflow-x-auto"></div>
+        </div>
+        <div class="border border-teal-200 rounded-lg p-4 bg-white">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="font-bold text-sm text-teal-900">📊 實際執行結果 / 錯誤訊息</h4>
+            <span class="text-xs text-teal-600">即時運算</span>
+          </div>
+          <div id="actual-result" class="overflow-x-auto"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. 結果比較區塊 -->
+    <section id="compare-section" class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-5">
+      <div>
+        <span class="text-xs font-bold text-teal-700 bg-teal-50 px-2.5 py-1 rounded">4. 結果比較</span>
+        <h2 class="text-xl font-bold text-slate-900 mt-1">針對同一問題修改 SQL 後，結果如何改變？原因為何？</h2>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-5 text-sm">
+        <!-- 比較 1 -->
+        <div class="border border-slate-200 rounded-lg p-4 flex flex-col justify-between space-y-3">
+          <div class="space-y-2">
+            <div class="font-bold text-slate-900">比較 1：將 <code class="mono text-teal-700">price &gt;= 55</code> 改為 <code class="mono text-amber-700">price &gt; 55</code> 並加上 <code class="mono text-amber-700">LIMIT 2</code></div>
+            <p class="text-slate-600 text-xs leading-relaxed">
+              <strong>結果改變：</strong>原本回傳 4 筆飲品；修改後剛好 55 元的「紅柚翡翠」與「珍珠伯爵鮮奶茶」被排除，且只保留價格最高的 2 筆（70 元與 65 元）。
+            </p>
+            <p class="text-slate-600 text-xs leading-relaxed">
+              <strong>原因：</strong><code class="mono">&gt;</code> 不含邊界值 55，而 <code class="mono">LIMIT 2</code> 會在排序完成後截斷後續資料列。
+            </p>
+          </div>
+          <button onclick="loadQuestion(0); applyModifiedSQL(); location.href='#practice-section';" class="w-full text-xs bg-slate-100 hover:bg-teal-50 hover:text-teal-700 font-semibold py-2 rounded transition">
+            載入此修改版 SQL 並查看結果 →
+          </button>
+        </div>
+
+        <!-- 比較 2 -->
+        <div class="border border-slate-200 rounded-lg p-4 flex flex-col justify-between space-y-3">
+          <div class="space-y-2">
+            <div class="font-bold text-slate-900">比較 2：將 <code class="mono text-teal-700">INNER JOIN</code> 改為 <code class="mono text-amber-700">LEFT JOIN</code></div>
+            <p class="text-slate-600 text-xs leading-relaxed">
+              <strong>結果改變：</strong>原本只列出 6 筆有會員身分的訂單；改用 <code class="mono">LEFT JOIN</code> 後變成 7 筆，多出訂單編號 <code class="mono">105</code>（<code class="mono">member_id</code> 為 <code class="mono">NULL</code> 的非會員路過客）。
+            </p>
+            <p class="text-slate-600 text-xs leading-relaxed">
+              <strong>原因：</strong><code class="mono">INNER JOIN</code> 會捨棄外來鍵為 <code class="mono">NULL</code> 的紀錄；<code class="mono">LEFT JOIN</code> 則會完整保留左表（<code class="mono">ORDERS</code>）所有訂單。
+            </p>
+          </div>
+          <button onclick="loadQuestion(1); applyModifiedSQL(); location.href='#practice-section';" class="w-full text-xs bg-slate-100 hover:bg-teal-50 hover:text-teal-700 font-semibold py-2 rounded transition">
+            載入此修改版 SQL 並查看結果 →
+          </button>
+        </div>
+
+        <!-- 比較 3 -->
+        <div class="border border-slate-200 rounded-lg p-4 flex flex-col justify-between space-y-3">
+          <div class="space-y-2">
+            <div class="font-bold text-slate-900">比較 3：在 <code class="mono text-teal-700">GROUP BY</code> 後加上 <code class="mono text-amber-700">HAVING SUM(...) &gt;= 200</code></div>
+            <p class="text-slate-600 text-xs leading-relaxed">
+              <strong>結果改變：</strong>原本顯示「鮮奶茶、果茶、純茶」3 大分類；修改後總營收僅 105 元的「純茶」被過濾掉，只剩 2 個高營收分類。
+            </p>
+            <p class="text-slate-600 text-xs leading-relaxed">
+              <strong>原因：</strong>聚合函數 <code class="mono">SUM()</code> 是在分組後才計算，不能寫在 <code class="mono">WHERE</code>（會報錯），必須使用 <code class="mono">HAVING</code> 對分組結果做篩選。
+            </p>
+          </div>
+          <button onclick="loadQuestion(2); applyModifiedSQL(); location.href='#practice-section';" class="w-full text-xs bg-slate-100 hover:bg-teal-50 hover:text-teal-700 font-semibold py-2 rounded transition">
+            載入此修改版 SQL 並查看結果 →
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    let db = null;
+    let currentQ = 0;
+
+    // 定義 ERD 外來鍵關聯線 (由 FK 欄位精準連向被參照的 PK 欄位)
+    const erdRelations = [
+      {
+        fromTable: 'orders', fromCol: 'store_id',
+        toTable: 'stores', toCol: 'store_id',
+        fromSide: 'left', toSide: 'right',
+        label: 'store_id', midX: 295
+      },
+      {
+        fromTable: 'orders', fromCol: 'member_id',
+        toTable: 'members', toCol: 'member_id',
+        fromSide: 'left', toSide: 'right',
+        label: 'member_id', midX: 310
+      },
+      {
+        fromTable: 'orders', fromCol: 'drink_id',
+        toTable: 'drinks', toCol: 'drink_id',
+        fromSide: 'right', toSide: 'left',
+        label: 'drink_id', midX: 640
+      },
+      {
+        fromTable: 'order_toppings', fromCol: 'order_id',
+        toTable: 'orders', toCol: 'order_id',
+        fromSide: 'left', toSide: 'right',
+        label: 'order_id', midX: 665
+      },
+      {
+        fromTable: 'members', fromCol: 'referrer_id',
+        toTable: 'members', toCol: 'member_id',
+        fromSide: 'right', toSide: 'right',
+        label: 'referrer_id', selfLoopOffset: 32
+      }
+    ];
+
+    // 題庫定義
+    const questions = [
+      {
+        title: "題目 1：查詢中高價位飲品清單（單表條件篩選與排序）",
+        desc: "請從 DRINKS 飲品表中，找出單價（price）在 55 元（含）以上的飲品名稱、分類與單價，並依單價由高到低排序。",
+        defaultSQL: `SELECT drink_name, category, price\nFROM drinks\nWHERE price >= 55\nORDER BY price DESC;`,
+        modifiedSQL: `SELECT drink_name, category, price\nFROM drinks\nWHERE price > 55\nORDER BY price DESC\nLIMIT 2;`
+      },
+      {
+        title: "題目 2：查詢每筆訂單的門市、購買會員與飲品明細（跨表 JOIN）",
+        desc: "請串聯 ORDERS、STORES、MEMBERS 與 DRINKS，列出訂單編號、門市名稱、會員姓名、飲品名稱與購買杯數。",
+        defaultSQL: `SELECT o.order_id, s.store_name, m.name, d.drink_name, o.quantity\nFROM orders o\nINNER JOIN stores s ON o.store_id = s.store_id\nINNER JOIN members m ON o.member_id = m.member_id\nINNER JOIN drinks d ON o.drink_id = d.drink_id\nORDER BY o.order_id;`,
+        modifiedSQL: `SELECT o.order_id, s.store_name, COALESCE(m.name, '非會員路過客') AS customer, d.drink_name, o.quantity\nFROM orders o\nINNER JOIN stores s ON o.store_id = s.store_id\nLEFT JOIN members m ON o.member_id = m.member_id\nINNER JOIN drinks d ON o.drink_id = d.drink_id\nORDER BY o.order_id;`
+      },
+      {
+        title: "題目 3：統計各飲品分類的總銷售杯數與總營收（GROUP BY 聚合統計）",
+        desc: "請結合 ORDERS 與 DRINKS，依飲品分類（category）分組計算總銷售杯數與總營收金額，並依總營收由高至低排序。",
+        defaultSQL: `SELECT d.category, SUM(o.quantity) AS total_cups, SUM(o.quantity * d.price) AS total_revenue\nFROM orders o\nINNER JOIN drinks d ON o.drink_id = d.drink_id\nGROUP BY d.category\nORDER BY total_revenue DESC;`,
+        modifiedSQL: `SELECT d.category, SUM(o.quantity) AS total_cups, SUM(o.quantity * d.price) AS total_revenue\nFROM orders o\nINNER JOIN drinks d ON o.drink_id = d.drink_id\nGROUP BY d.category\nHAVING SUM(o.quantity * d.price) >= 200\nORDER BY total_revenue DESC;`
+      }
+    ];
+
+    // 切換頂部 背景 / ERD / 資料表 分頁
+    function switchTopTab(tab) {
+      const panels = { bg: 'panel-bg', erd: 'panel-erd', tables: 'panel-tables' };
+      const btns = { bg: 'btn-tab-bg', erd: 'btn-tab-erd', tables: 'btn-tab-tables' };
+
+      Object.keys(panels).forEach(k => {
+        document.getElementById(panels[k]).classList.toggle('hidden', k !== tab);
+        const btn = document.getElementById(btns[k]);
+        if (k === tab) {
+          btn.className = "px-3 py-1.5 rounded-md transition flex items-center gap-1.5 bg-white text-teal-700 shadow-sm font-semibold";
+        } else {
+          btn.className = "px-3 py-1.5 rounded-md transition flex items-center gap-1.5 hover:text-slate-900";
+        }
+      });
+
+      if (tab === 'erd') {
+        requestAnimationFrame(() => drawERDConnections(document.getElementById('sql-editor').value));
+      }
+    }
+
+    // 根據 SQL 語法解析本輪查詢使用到的資料表與欄位，並繪製直角 SVG 箭頭
+    function drawERDConnections(sqlText = "") {
+      const canvas = document.getElementById('erd-canvas');
+      const svg = document.getElementById('erd-svg');
+      if (!canvas || !svg) return;
+
+      const canvasRect = canvas.getBoundingClientRect();
+      if (canvasRect.width === 0) return;
+
+      const lowerSQL = sqlText.toLowerCase();
+      const allTables = ['stores', 'members', 'orders', 'drinks', 'order_toppings'];
+      const activeTables = new Set();
+
+      // 標記使用到的資料表與欄位
+      allTables.forEach(t => {
+        const card = document.getElementById(`table-card-${t}`);
+        const regexTable = new RegExp(`\\b${t}\\b`, 'i');
+        const isTableUsed = regexTable.test(lowerSQL);
+        if (isTableUsed) activeTables.add(t);
+        card.classList.toggle('active-table', isTableUsed);
+
+        const cols = card.querySelectorAll('.erd-col');
+        cols.forEach(colEl => {
+          const colName = colEl.getAttribute('data-col');
+          const regexCol = new RegExp(`\\b${colName}\\b`, 'i');
+          const isColUsed = isTableUsed && (regexCol.test(lowerSQL) || /\bselect\s+\*/i.test(lowerSQL));
+          colEl.classList.toggle('active-col', isColUsed);
+        });
+      });
+
+      // 保留 <defs> 並重繪所有連線
+      const defs = svg.querySelector('defs').outerHTML;
+      let pathsHTML = defs;
+
+      erdRelations.forEach(rel => {
+        const fromCard = document.getElementById(`table-card-${rel.fromTable}`);
+        const toCard = document.getElementById(`table-card-${rel.toTable}`);
+        const fromRow = document.getElementById(`col-${rel.fromTable}-${rel.fromCol}`);
+        const toRow = document.getElementById(`col-${rel.toTable}-${rel.toCol}`);
+        if (!fromCard || !toCard || !fromRow || !toRow) return;
+
+        const fromCardRect = fromCard.getBoundingClientRect();
+        const toCardRect = toCard.getBoundingClientRect();
+        const fromRowRect = fromRow.getBoundingClientRect();
+        const toRowRect = toRow.getBoundingClientRect();
+
+        const y1 = fromRowRect.top - canvasRect.top + fromRowRect.height / 2;
+        const y2 = toRowRect.top - canvasRect.top + toRowRect.height / 2;
+
+        const x1 = rel.fromSide === 'left'
+          ? (fromCardRect.left - canvasRect.left)
+          : (fromCardRect.right - canvasRect.left);
+
+        const x2 = rel.toSide === 'left'
+          ? (toCardRect.left - canvasRect.left - 2)
+          : (toCardRect.right - canvasRect.left + 2);
+
+        // 判斷該關聯線是否在本輪查詢中被使用
+        const isRelActive =
+          activeTables.has(rel.fromTable) &&
+          activeTables.has(rel.toTable) &&
+          new RegExp(`\\b${rel.fromCol}\\b`, 'i').test(lowerSQL);
+
+        const strokeColor = isRelActive ? "#059669" : "#94a3b8";
+        const strokeWidth = isRelActive ? "1.8" : "1.2";
+        const marker = isRelActive ? "url(#arrow-active)" : "url(#arrow-normal)";
+        const labelColor = isRelActive ? "#047857" : "#64748b";
+
+        let d = "";
+        let labelX = 0;
+        let labelY = 0;
+
+        if (rel.selfLoopOffset) {
+          // 自我參照折線 (如 MEMBERS.referrer_id -> MEMBERS.member_id)
+          const loopX = x1 + rel.selfLoopOffset;
+          d = `M ${x1} ${y1} L ${loopX} ${y1} L ${loopX} ${y2} L ${x2} ${y2}`;
+          labelX = loopX + 5;
+          labelY = (y1 + y2) / 2 + 4;
+        } else {
+          // 跨表直角折線
+          const midX = rel.midX;
+          d = `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
+          labelX = rel.fromSide === 'left' ? x1 - 58 : x1 + 8;
+          labelY = y1 - 5;
+        }
+
+        pathsHTML += `
+          <path d="${d}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" marker-end="${marker}" />
+          <text x="${labelX}" y="${labelY}" fill="${labelColor}" font-size="10.5" font-family="ui-monospace, monospace" font-weight="${isRelActive ? '600' : '400'}">${rel.label}</text>
+        `;
+      });
+
+      svg.innerHTML = pathsHTML;
+    }
+
+    // 初始化 SQLite 資料庫
+    async function initDB() {
+      const SQL = await initSqlJs({
+        locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}`
+      });
+      db = new SQL.Database();
+
+      db.run(`
+        CREATE TABLE stores (
+          store_id INTEGER PRIMARY KEY,
+          store_name TEXT NOT NULL,
+          district TEXT NOT NULL
+        );
+
+        CREATE TABLE members (
+          member_id INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          vip_level TEXT NOT NULL,
+          join_date TEXT NOT NULL,
+          referrer_id INTEGER,
+          FOREIGN KEY (referrer_id) REFERENCES members(member_id)
+        );
+
+        CREATE TABLE drinks (
+          drink_id INTEGER PRIMARY KEY,
+          drink_name TEXT NOT NULL,
+          category TEXT NOT NULL,
+          price INTEGER NOT NULL
+        );
+
+        CREATE TABLE orders (
+          order_id INTEGER PRIMARY KEY,
+          store_id INTEGER NOT NULL,
+          member_id INTEGER,
+          drink_id INTEGER NOT NULL,
+          sugar_level TEXT NOT NULL,
+          quantity INTEGER NOT NULL,
+          order_date TEXT NOT NULL,
+          FOREIGN KEY (store_id) REFERENCES stores(store_id),
+          FOREIGN KEY (member_id) REFERENCES members(member_id),
+          FOREIGN KEY (drink_id) REFERENCES drinks(drink_id)
+        );
+
+        CREATE TABLE order_toppings (
+          order_id INTEGER NOT NULL,
+          topping_name TEXT NOT NULL,
+          extra_price INTEGER NOT NULL,
+          PRIMARY KEY (order_id, topping_name),
+          FOREIGN KEY (order_id) REFERENCES orders(order_id)
+        );
+
+        INSERT INTO stores VALUES
+          (1, '台北城中店', '中正區'),
+          (2, '西門町旗艦店', '萬華區'),
+          (3, '松山車站店', '信義區');
+
+        INSERT INTO members VALUES
+          (1, '林小美', '金卡', '2025-03-10', NULL),
+          (2, '陳冠宇', '銀卡', '2025-06-22', 1),
+          (3, '張雅筑', '一般', '2025-09-01', 1),
+          (4, '王柏翰', '金卡', '2025-01-15', NULL);
+
+        INSERT INTO drinks VALUES
+          (10, '四季春青茶', '純茶', 35),
+          (20, '珍珠伯爵鮮奶茶', '鮮奶茶', 55),
+          (30, '黑糖珍珠鮮奶', '鮮奶茶', 65),
+          (40, '滿杯紅柚翡翠', '果茶', 55),
+          (50, '大甲芋頭鮮奶', '鮮奶茶', 70),
+          (60, '凍頂烏龍茶', '純茶', 35);
+
+        INSERT INTO orders VALUES
+          (101, 1, 1, 30, '微糖', 2, '2026-10-01'),
+          (102, 1, 2, 10, '無糖', 3, '2026-10-01'),
+          (103, 2, 1, 50, '微糖', 2, '2026-10-02'),
+          (104, 2, 3, 40, '半糖', 4, '2026-10-02'),
+          (105, 3, NULL, 20, '微糖', 2, '2026-10-03'),
+          (106, 3, 4, 30, '全糖', 1, '2026-10-03'),
+          (107, 1, 2, 40, '無糖', 1, '2026-10-04');
+
+        INSERT INTO order_toppings VALUES
+          (101, '白玉珍珠', 10),
+          (101, '手作布丁', 15),
+          (103, '小芋圓', 10),
+          (104, '蘆薈果粒', 10),
+          (105, '椰果', 10);
+      `);
+
+      // 渲染「資料表」分頁中的樣本預覽
+      document.getElementById('preview-stores').innerHTML = renderHTMLTable(db.exec("SELECT * FROM stores;"));
+      document.getElementById('preview-members').innerHTML = renderHTMLTable(db.exec("SELECT * FROM members;"));
+      document.getElementById('preview-drinks').innerHTML = renderHTMLTable(db.exec("SELECT * FROM drinks;"));
+      document.getElementById('preview-orders').innerHTML = renderHTMLTable(db.exec("SELECT * FROM orders;"));
+      document.getElementById('preview-toppings').innerHTML = renderHTMLTable(db.exec("SELECT * FROM order_toppings;"));
+
+      loadQuestion(0);
+    }
+
+    function renderHTMLTable(res) {
+      if (!res || res.length === 0) {
+        return `<div class="p-3 text-xs text-slate-500">查詢成功，無符合條件之資料列 (0 rows)。</div>`;
+      }
+      const cols = res[0].columns;
+      const rows = res[0].values;
+      let html = `<table class="w-full text-left border-collapse text-xs"><thead class="bg-slate-100 border-b border-slate-200 text-slate-700"><tr>`;
+      cols.forEach(c => { html += `<th class="py-2 px-2.5 font-bold mono whitespace-nowrap">${c}</th>`; });
+      html += `</tr></thead><tbody class="divide-y divide-slate-100">`;
+      rows.forEach(r => {
+        html += `<tr class="hover:bg-slate-50">`;
+        r.forEach(v => {
+          const cell = v === null ? `<span class="text-slate-400 italic">NULL</span>` : v;
+          html += `<td class="py-1.5 px-2.5 whitespace-nowrap">${cell}</td>`;
+        });
+        html += `</tr>`;
+      });
+      html += `</tbody></table>`;
+      return html;
+    }
+
+    function loadQuestion(idx) {
+      currentQ = idx;
+      const q = questions[idx];
+      questions.forEach((_, i) => {
+        const btn = document.getElementById(`q-tab-${i}`);
+        btn.className = i === idx
+          ? "px-3.5 py-1.5 rounded-lg text-xs font-bold bg-teal-700 text-white transition"
+          : "px-3.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition";
+      });
+
+      document.getElementById('q-title').textContent = q.title;
+      document.getElementById('q-desc').textContent = q.desc;
+      document.getElementById('sql-editor').value = q.defaultSQL;
+      document.getElementById('expected-result').innerHTML = renderHTMLTable(db.exec(q.defaultSQL));
+      runUserSQL();
+    }
+
+    function runUserSQL() {
+      const sql = document.getElementById('sql-editor').value.trim();
+      const actualEl = document.getElementById('actual-result');
+      const statusEl = document.getElementById('exec-status');
+
+      // 同步更新上方 ERD 的綠色高亮資料表、欄位與箭頭
+      drawERDConnections(sql);
+
+      if (!sql) {
+        actualEl.innerHTML = `<div class="p-3 text-xs text-amber-700 bg-amber-50 rounded">請輸入 SQL 查詢語句。</div>`;
+        statusEl.textContent = "";
+        return;
+      }
+
+      try {
+        const t0 = performance.now();
+        const res = db.exec(sql);
+        const dt = (performance.now() - t0).toFixed(1);
+        actualEl.innerHTML = renderHTMLTable(res);
+        statusEl.textContent = `✓ 執行成功 (${dt} ms)`;
+        statusEl.className = "text-xs font-semibold text-teal-700";
+      } catch (e) {
+        actualEl.innerHTML = `
+          <div class="p-3.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 space-y-1">
+            <div class="font-bold">❌ SQL 執行錯誤：</div>
+            <div class="mono bg-white p-2 rounded border border-red-100">${e.message}</div>
+          </div>
+        `;
+        statusEl.textContent = "✕ 語法錯誤";
+        statusEl.className = "text-xs font-semibold text-red-600";
+      }
+    }
+
+    function resetSQL() {
+      document.getElementById('sql-editor').value = questions[currentQ].defaultSQL;
+      runUserSQL();
+    }
+
+    function applyModifiedSQL() {
+      document.getElementById('sql-editor').value = questions[currentQ].modifiedSQL;
+      runUserSQL();
+    }
+
+    window.addEventListener('DOMContentLoaded', initDB);
+    window.addEventListener('resize', () => {
+      drawERDConnections(document.getElementById('sql-editor').value);
+    });
+  </script>
+</body>
+</html>
